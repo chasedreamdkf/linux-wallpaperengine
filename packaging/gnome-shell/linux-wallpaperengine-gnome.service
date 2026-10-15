@@ -6,7 +6,7 @@ PartOf=graphical-session.target
 [Service]
 Type=simple
 Environment=XDG_SESSION_TYPE=wayland
-ExecStart=@BINARY@ --gnome-shell @BACKGROUND@
+ExecStart=@BINARY@ @ARGS@
 Restart=on-failure
 RestartSec=3
 

@@ -24,38 +24,58 @@ Building
 
 Installing
 ----------
+The one-stop script installs the extension, writes and enables the systemd --user
+unit (so the wallpaper comes back on every login) and starts the engine:
+
+    ./packaging/gnome-shell/run.sh                       # reuse the last wallpaper(s)
+    ./packaging/gnome-shell/run.sh 2976403740            # one wallpaper, whole desktop
+    ./packaging/gnome-shell/run.sh 0=2976403740 1=3023217614
+
+On the first run the extension is not loaded in the current session yet, so the
+script only enables the unit and asks you to log out and back in once. From then
+on the wallpaper starts automatically.
+
+If you only want to install things and pick the wallpaper yourself, use
+install.sh instead:
+
     ./packaging/gnome-shell/install.sh [engine-binary] [wallpaper-path]
 
 The first argument is the path to the linux-wallpaperengine binary (optional,
 auto-detected when omitted). The second is the wallpaper to use (optional, edit
-the generated systemd unit if you leave it out).
-
-Then enable the extension and start the engine:
+the generated systemd unit if you leave it out). Then enable it by hand:
 
     gnome-extensions enable linux-wallpaperengine-gnome@local
     systemctl --user enable --now linux-wallpaperengine-gnome.service
-
-On Wayland you must log out and back in (or restart GNOME Shell) before the
-extension is loaded.
-
-You can also run the engine manually:
-
-    linux-wallpaperengine --gnome-shell /path/to/wallpaper
 
 
 Per-monitor wallpapers
 ----------------------
 By default one wallpaper is rendered over the whole desktop bounding box. To give
-every monitor its own wallpaper, repeat --gnome-shell-screen with the monitor
-index (the engine logs them, 0-based) followed by --bg, and optionally
---scaling/--clamp:
+every monitor its own wallpaper pass <index>=<background> for each of them, or
+use the engine's --gnome-shell-screen directly:
+
+    ./run.sh 0=2976403740 1=3023217614
 
     linux-wallpaperengine \
         --gnome-shell-screen 0 --bg 123456 --scaling fill \
         --gnome-shell-screen 1 --bg 789012 --scaling fill
 
+<index> is the 0-based monitor index the extension reports; the engine logs them
+on startup:
+
+    GNOME Shell desktop bounding box is 3840x1285 at (0,0) across 2 monitor(s)
+      monitor 0 -> 1920x85:1920x1200
+      monitor 1 -> 0x0:1920x1080
+
 Monitors have no connector name in GNOME Shell's JS API, so screens are picked by
 index. A wallpaper is only rendered for monitors the extension reports.
+
+
+Running manually
+----------------
+Bypassing systemd entirely (handy while debugging):
+
+    linux-wallpaperengine --gnome-shell /path/to/wallpaper
 
 
 Uninstalling

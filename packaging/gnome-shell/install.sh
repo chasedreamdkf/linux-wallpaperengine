@@ -55,7 +55,7 @@ if [[ -z "${BACKGROUND}" ]]; then
     echo "WARNING: no wallpaper path given, edit ${SYSTEMD_DIR}/${UNIT_NAME} before starting the service" >&2
 fi
 
-sed -e "s|@BINARY@|${BINARY}|g" -e "s|@BACKGROUND@|${BACKGROUND}|g" \
+sed -e "s|@BINARY@|${BINARY}|g" -e "s|@ARGS@|--gnome-shell ${BACKGROUND}|g" \
     "${SCRIPT_DIR}/${UNIT_NAME}" > "${SYSTEMD_DIR}/${UNIT_NAME}"
 
 systemctl --user daemon-reload || true
