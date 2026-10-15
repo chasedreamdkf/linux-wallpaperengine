@@ -315,6 +315,13 @@ void ApplicationContext::loadSettingsFromArgv () {
 	    this->settings.general.screenClamps[lastScreen] = this->settings.render.window.clamp;
 	})
 	.append ();
+    backgroundMode.add_argument ("--gnome-shell")
+	.help (
+	    "Render offscreen (EGL surfaceless) and hand the frames over to the GNOME Shell bridge extension "
+	    "(Hidamari-style backend for GNOME Wayland). No visible window is created."
+	)
+	.flag ()
+	.action ([this] (const std::string& value) -> void { this->settings.render.mode = GNOME_SHELL; });
     backgroundGroup.add_argument ("--screen-span")
 	.help ("Comma-separated list of screens to span a single wallpaper across")
 	.action ([this, &lastScreen] (const std::string& value) -> void {

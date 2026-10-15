@@ -1,0 +1,7 @@
+{
+  "uuid": "linux-wallpaperengine-gnome@local",
+  "name": "Linux Wallpaper Engine",
+  "description": "Displays frames rendered offscreen by linux-wallpaperengine in the GNOME Shell background group (Hidamari-style backend).",
+  "shell-version": ["50"],
+  "version": 1
+}

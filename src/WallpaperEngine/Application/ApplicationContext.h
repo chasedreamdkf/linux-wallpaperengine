@@ -38,6 +38,11 @@ public:
 	DESKTOP_BACKGROUND = 1,
 	/** Explicit window mode with specified geometry */
 	EXPLICIT_WINDOW = 2,
+	/**
+	 * Render offscreen and hand the frames over to the GNOME Shell bridge extension
+	 * (Hidamari-style backend). No visible Wayland/X11 window is ever created.
+	 */
+	GNOME_SHELL = 3,
     };
 
     /**

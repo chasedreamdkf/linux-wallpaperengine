@@ -181,7 +181,8 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
 
 void WallpaperApplication::loadBackgrounds () {
     if (this->m_context.settings.render.mode == ApplicationContext::NORMAL_WINDOW
-	|| this->m_context.settings.render.mode == ApplicationContext::EXPLICIT_WINDOW) {
+	|| this->m_context.settings.render.mode == ApplicationContext::EXPLICIT_WINDOW
+	|| this->m_context.settings.render.mode == ApplicationContext::GNOME_SHELL) {
 	auto path = this->m_context.settings.general.defaultBackground;
 
 	if (this->m_context.settings.general.defaultPlaylist.has_value ()
@@ -682,8 +683,16 @@ void WallpaperApplication::setupOutput () {
     this->m_videoDriver = sVideoFactories.createVideoDriver (
 	this->m_context.settings.render.mode, XDG_SESSION_TYPE, this->m_context, *this
     );
-    this->m_fullScreenDetector
-	= sVideoFactories.createFullscreenDetector (XDG_SESSION_TYPE, this->m_context, *this->m_videoDriver);
+
+    if (this->m_context.settings.render.mode == ApplicationContext::GNOME_SHELL) {
+	// Mutter does not implement zwlr-foreign-toplevel-management, so there is no way to
+	// detect fullscreen windows on GNOME Wayland. Fall back to the always-not-fullscreen stub.
+	this->m_fullScreenDetector
+	    = std::make_unique<WallpaperEngine::Render::Drivers::Detectors::FullScreenDetector> (this->m_context);
+    } else {
+	this->m_fullScreenDetector
+	    = sVideoFactories.createFullscreenDetector (XDG_SESSION_TYPE, this->m_context, *this->m_videoDriver);
+    }
 }
 
 void WallpaperApplication::setupAudio () {
@@ -991,6 +1000,12 @@ const WallpaperEngine::Render::Drivers::Output::Output& WallpaperApplication::ge
 
 void WallpaperApplication::setDestinationFramebuffer (GLuint framebuffer) {
     this->m_destinationFramebuffer = framebuffer;
+
+    // the offscreen drivers set this before the render context exists, so it might not be ready yet
+    if (this->m_renderContext == nullptr) {
+	return;
+    }
+
     // Update all wallpapers with the new destination framebuffer
     for (const auto& [screen, wallpaper] : this->m_renderContext->getWallpapers ()) {
 	wallpaper->setDestinationFramebuffer (framebuffer);

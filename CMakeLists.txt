@@ -22,6 +22,9 @@ if(NOT ERRORONLY)
     set(ERRORONLY 0)
 endif()
 
+# Hidamari-style GNOME Shell backend: renders offscreen and hands the frames to a GNOME Shell extension
+option(GNOME_SHELL_BACKEND "Build the offscreen GNOME Shell (Hidamari-style) backend" ON)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-narrowing")
 
 find_package(X11)
@@ -550,6 +553,22 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Maths.h
     src/WallpaperEngine/Maths.cpp)
 
+set(GNOME_SHELL_SOURCES)
+
+if(GNOME_SHELL_BACKEND)
+    set(GNOME_SHELL_SOURCES
+        src/WallpaperEngine/Render/Drivers/GnomeShell/SharedFrameBuffer.cpp
+        src/WallpaperEngine/Render/Drivers/GnomeShell/SharedFrameBuffer.h
+        src/WallpaperEngine/Render/Drivers/GnomeShell/GnomeShellIpc.cpp
+        src/WallpaperEngine/Render/Drivers/GnomeShell/GnomeShellIpc.h
+        src/WallpaperEngine/Render/Drivers/Output/GnomeShellOutput.cpp
+        src/WallpaperEngine/Render/Drivers/Output/GnomeShellOutput.h
+        src/WallpaperEngine/Render/Drivers/GnomeShellOpenGLDriver.cpp
+        src/WallpaperEngine/Render/Drivers/GnomeShellOpenGLDriver.h
+        src/WallpaperEngine/Input/Drivers/GnomeShellMouseInput.cpp
+        src/WallpaperEngine/Input/Drivers/GnomeShellMouseInput.h)
+endif()
+
 if(BUILD_TESTING)
     add_executable(
         tests
@@ -573,6 +592,7 @@ add_library(
     ${COMMON_SOURCES}
     ${WAYLAND_SOURCES}
     ${X11_SOURCES}
+    ${GNOME_SHELL_SOURCES}
     ${DEMOMODE_SOURCES})
 
 target_link_libraries (linux-wallpaperengine-lib PUBLIC
@@ -652,6 +672,17 @@ endif()
 
 if(WAYLAND_SUPPORT_FOUND AND NOT X11_SUPPORT_FOUND)
     target_compile_definitions(linux-wallpaperengine-lib PUBLIC GLEW_EGL)
+endif()
+
+if(GNOME_SHELL_BACKEND)
+    target_compile_definitions(linux-wallpaperengine-lib PUBLIC ENABLE_GNOME_SHELL)
+
+    # the surfaceless OpenGL context is created through EGL
+    target_include_directories(linux-wallpaperengine-lib PRIVATE ${OPENGL_EGL_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR})
+
+    if(OPENGL_egl_LIBRARY)
+        target_link_libraries(linux-wallpaperengine-lib PUBLIC ${OPENGL_egl_LIBRARY})
+    endif()
 endif()
 
 target_include_directories(linux-wallpaperengine-lib PUBLIC

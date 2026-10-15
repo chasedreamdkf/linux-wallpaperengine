@@ -1,0 +1,75 @@
+linux-wallpaperengine - GNOME Shell (Hidamari-style) backend
+============================================================
+
+This backend runs the full Wallpaper Engine rendering core (scenes, shaders,
+particles, video and web wallpapers) completely offscreen and hands each frame
+to a GNOME Shell extension through a POSIX shared memory segment. The extension
+paints the frames inside Mutter's background group.
+
+It does not use wlr-layer-shell and does not switch to Xorg, which makes it work
+on GNOME 50 Wayland despite Mutter not implementing the layer-shell protocol.
+
+
+Requirements
+------------
+- GNOME Shell 50 (Wayland)
+- The engine built with -DGNOME_SHELL_BACKEND=ON (the default)
+
+
+Building
+--------
+    cmake -S . -B build -DGNOME_SHELL_BACKEND=ON
+    cmake --build build -j
+
+
+Installing
+----------
+    ./packaging/gnome-shell/install.sh [engine-binary] [wallpaper-path]
+
+The first argument is the path to the linux-wallpaperengine binary (optional,
+auto-detected when omitted). The second is the wallpaper to use (optional, edit
+the generated systemd unit if you leave it out).
+
+Then enable the extension and start the engine:
+
+    gnome-extensions enable linux-wallpaperengine-gnome@local
+    systemctl --user enable --now linux-wallpaperengine-gnome.service
+
+On Wayland you must log out and back in (or restart GNOME Shell) before the
+extension is loaded.
+
+You can also run the engine manually:
+
+    linux-wallpaperengine --gnome-shell /path/to/wallpaper
+
+
+Uninstalling
+------------
+    ./packaging/gnome-shell/uninstall.sh
+
+
+How it works
+------------
+1. The engine creates an EGL surfaceless OpenGL context (falling back to a
+   hidden GLFW window when EGL is unavailable) and renders the whole desktop
+   bounding box into its own framebuffer.
+2. Each frame is read back with glReadPixels into a double-buffered shared
+   memory segment protected by a seqlock, exposed as
+   /dev/shm/lwe-gnome-<pid>-<n>.
+3. A lightweight FrameReady D-Bus signal wakes the extension, which maps the
+   segment and updates a Clutter.Image on an actor inside the background group.
+4. The extension reports the monitor layout and pointer position back to the
+   engine over D-Bus so multi-monitor layouts and mouse-driven parallax work.
+
+
+Known limitations
+-----------------
+- `Main.layoutManager._backgroundGroup` and the `rgba(0,0,0,0.01)` style hack
+  are not public API; this backend targets GNOME Shell 50 only.
+- Wallpapers cannot receive mouse clicks: an actor in the background group does
+  not get pointer events. Only mouse position (parallax) is available.
+- Fullscreen pause does not work: Mutter does not implement
+  zwlr-foreign-toplevel-management, so there is no way to detect fullscreen
+  windows. The extension still pauses rendering while the session is locked.
+- CEF web wallpapers need a working headless/offscreen setup; verify them
+  separately if you use them.

@@ -1,0 +1,6 @@
+cd /home/chasedream/Developer/linux-wallpaperengine
+bash packaging/gnome-shell/install.sh          # 安装扩展 + systemd 单元
+gnome-extensions enable linux-wallpaperengine-gnome@local
+# 注销并重新登录（Wayland 无法热重载 gnome-shell）
+XDG_SESSION_TYPE=wayland ./build/output/linux-wallpaperengine --gnome-shell <视频壁纸路径>
+# 验收：无可见窗口、画面变化、退出后 ls /dev/shm | grep lwe 无残留
