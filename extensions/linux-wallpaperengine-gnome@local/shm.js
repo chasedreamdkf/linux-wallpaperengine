@@ -9,7 +9,13 @@
 //
 // The `seq` field is a seqlock: an even value means the buffer at index (seq / 2)
 // is stable, an odd value means a write is in progress.
+//
+// GLib.MappedFile cannot be used here: GJS turns the GBytes returned by
+// MappedFile.get_bytes() into a *copy* taken when the file is mapped, so the
+// reader would keep re-reading the segment as it looked at mapping time. The
+// frames are read from the file instead (one read per frame, see the README).
 
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 const HEADER_SIZE = 32;
@@ -23,58 +29,73 @@ export class SharedFrame {
         this._stride = stride;
         this._format = format;
         this._frameSize = stride * height;
-        this._mapped = null;
-        this._bytes = null;
-        this._data = null;
+        this._requiredSize = HEADER_SIZE + 2 * this._frameSize;
+        this._stream = null;
 
-        this._map();
+        this._open();
     }
 
-    _map() {
-        this._mapped = new GLib.MappedFile(this._path, false);
-        this._bytes = this._mapped.get_bytes();
-        this._data = this._bytes.get_data();
+    _open() {
+        const file = Gio.File.new_for_path(this._path);
+        const info = file.query_info('standard::size', Gio.FileQueryInfoFlags.NONE, null);
 
-        const required = HEADER_SIZE + 2 * this._frameSize;
-
-        if (this._data === null || this._data.length < required) {
+        if (info.get_size() < this._requiredSize)
             throw new Error(`shared frame buffer ${this._path} is smaller than expected`);
-        }
+
+        this._stream = file.read(null);
+    }
+
+    _readAt(offset, size) {
+        this._stream.seek(offset, GLib.SeekType.SET, null);
+
+        const bytes = this._stream.read_bytes(size, null);
+
+        if (bytes.get_size() < size)
+            return null;
+
+        return bytes.get_data();
+    }
+
+    _readSequence() {
+        const header = this._readAt(SEQ_OFFSET, 4);
+
+        if (header === null)
+            return null;
+
+        return new DataView(header.buffer, header.byteOffset, 4).getUint32(0, true);
     }
 
     /**
-     * @returns {Uint8Array|null} a view over the stable buffer, or null if a writer is active
+     * @returns {Uint8Array|null} the stable frame, or null if a writer is active
      */
     readFrame() {
-        if (this._data === null)
-            return null;
+        for (let attempt = 0; attempt < 8; attempt++) {
+            const seq = this._readSequence();
 
-        const view = new DataView(this._data.buffer, this._data.byteOffset, this._data.byteLength);
-
-        for (let attempt = 0; attempt < 16; attempt++) {
-            const seq = view.getUint32(SEQ_OFFSET, true);
-
-            // odd means a writer is filling a buffer right now
-            if ((seq & 1) !== 0)
-                continue;
-
-            // make sure no write started while we were picking the buffer
-            if (view.getUint32(SEQ_OFFSET, true) !== seq)
+            if (seq === null || (seq & 1) !== 0)
                 continue;
 
             const index = (seq >>> 1) & 1;
-            const offset = HEADER_SIZE + index * this._frameSize;
+            const pixels = this._readAt(HEADER_SIZE + index * this._frameSize, this._frameSize);
 
-            return this._data.subarray(offset, offset + this._frameSize);
+            if (pixels === null)
+                return null;
+
+            // a new frame was published while this one was being copied, retry
+            if (this._readSequence() !== seq)
+                continue;
+
+            return pixels;
         }
 
         return null;
     }
 
     close() {
-        this._data = null;
-        this._bytes = null;
-        this._mapped = null;
+        if (this._stream !== null) {
+            this._stream.close(null);
+            this._stream = null;
+        }
     }
 
     get width() {

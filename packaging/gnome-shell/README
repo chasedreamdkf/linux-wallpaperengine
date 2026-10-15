@@ -56,8 +56,9 @@ How it works
 2. Each frame is read back with glReadPixels into a double-buffered shared
    memory segment protected by a seqlock, exposed as
    /dev/shm/lwe-gnome-<pid>-<n>.
-3. A lightweight FrameReady D-Bus signal wakes the extension, which maps the
-   segment and updates a Clutter.Image on an actor inside the background group.
+3. A lightweight FrameReady D-Bus signal wakes the extension, which reads the
+   stable buffer and pushes it into an St.ImageContent on an actor inside the
+   background group.
 4. The extension reports the monitor layout and pointer position back to the
    engine over D-Bus so multi-monitor layouts and mouse-driven parallax work.
 
@@ -73,3 +74,6 @@ Known limitations
   windows. The extension still pauses rendering while the session is locked.
 - CEF web wallpapers need a working headless/offscreen setup; verify them
   separately if you use them.
+- Reading the frames is not zero-copy: GJS turns the GBytes returned by
+  GLib.MappedFile.get_bytes() into a copy taken when the file is mapped, so the
+  extension reads the segment from the file on every frame instead.

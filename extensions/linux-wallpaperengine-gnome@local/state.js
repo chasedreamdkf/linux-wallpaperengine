@@ -1,11 +1,11 @@
 // Keeps the Wallpaper Engine actor in sync with the shell state: it owns the
-// Clutter actor inserted into the background group, maps the shared frame buffer,
-// reports the monitor layout / pointer position and reacts to the session mode
-// (lock screen) changes.
+// Clutter actor inserted into the background group, reads the shared frame
+// buffer, reports the monitor layout / pointer position and reacts to the
+// session mode (lock screen) changes.
 
-import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
 import GLib from 'gi://GLib';
+import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -19,9 +19,12 @@ export class WallpaperState {
         this._bridge = null;
         this._frame = null;
 
-        this._image = new Clutter.Image();
+        // Clutter.Image was removed in GNOME 47; St.ImageContent is the replacement
+        // (it needs a Cogl context when the pixels are pushed, see onFrameReady).
+        this._image = St.ImageContent.new_with_preferred_size(1, 1);
 
-        this._actor = new Clutter.Actor({
+        // St.Widget (and not a plain Clutter.Actor) so that set_style is available
+        this._actor = new St.Widget({
             name: 'linux-wallpaperengine',
             reactive: false,
         });
@@ -64,6 +67,8 @@ export class WallpaperState {
             return false;
         }
 
+        this._image.set_preferred_width(width);
+        this._image.set_preferred_height(height);
         this._actor.set_size(width, height);
         this._syncSessionMode();
 
@@ -86,8 +91,15 @@ export class WallpaperState {
         if (pixels === null)
             return;
 
+        // Clutter.Context cannot be passed to set_data(), it has to be the Cogl
+        // context behind it (same call the shell itself uses for St.ImageContent)
+        const context = global.stage.context.get_backend().get_cogl_context();
+
+        if (context === null)
+            return;
+
         this._image.set_data(
-            pixels, Cogl.PixelFormat.RGBA_8888,
+            context, pixels, Cogl.PixelFormat.RGBA_8888,
             this._frame.width, this._frame.height, this._frame.stride);
     }
 
