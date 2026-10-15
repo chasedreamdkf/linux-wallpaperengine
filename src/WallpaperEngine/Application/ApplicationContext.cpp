@@ -322,6 +322,31 @@ void ApplicationContext::loadSettingsFromArgv () {
 	)
 	.flag ()
 	.action ([this] (const std::string& value) -> void { this->settings.render.mode = GNOME_SHELL; });
+    backgroundGroup.add_argument ("--gnome-shell-screen")
+	.help (
+	    "Monitor index (0-based, as reported by the GNOME Shell extension) the following --bg/--playlist/"
+	    "--scaling/--clamp apply to. Selects the GNOME Shell backend on its own and can be repeated to give "
+	    "every monitor its own wallpaper."
+	)
+	.action ([this, &lastScreen] (const std::string& value) -> void {
+	    if (this->settings.render.mode == EXPLICIT_WINDOW) {
+		sLog.exception ("Cannot run in both background and window mode");
+	    }
+	    if (value.empty () || value.find_first_not_of ("0123456789") != std::string::npos) {
+		sLog.exception ("--gnome-shell-screen requires a monitor index (0, 1, ...): ", value);
+	    }
+	    if (this->settings.general.screenBackgrounds.find (value)
+		!= this->settings.general.screenBackgrounds.end ()) {
+		sLog.exception ("Cannot specify the same monitor more than once: ", value);
+	    }
+
+	    this->settings.render.mode = GNOME_SHELL;
+	    lastScreen = value;
+	    this->settings.general.screenBackgrounds[lastScreen] = "";
+	    this->settings.general.screenScalings[lastScreen] = this->settings.render.window.scalingMode;
+	    this->settings.general.screenClamps[lastScreen] = this->settings.render.window.clamp;
+	})
+	.append ();
     backgroundGroup.add_argument ("--screen-span")
 	.help ("Comma-separated list of screens to span a single wallpaper across")
 	.action ([this, &lastScreen] (const std::string& value) -> void {
@@ -410,7 +435,8 @@ void ApplicationContext::loadSettingsFromArgv () {
     backgroundGroup.add_argument ("--scaling")
 	.help (
 	    "Scaling mode to use when rendering the background, this applies to the previous --window, --screen-root, "
-	    "or --screen-span output, or the default background if no other background is specified"
+	    "--gnome-shell-screen, or --screen-span output, or the default background if no other background is "
+	    "specified"
 	)
 	.choices ("stretch", "fit", "fill", "default")
 	.action ([this, &lastScreen] (const std::string& value) -> void {
@@ -428,7 +454,9 @@ void ApplicationContext::loadSettingsFromArgv () {
 		sLog.exception ("Invalid scaling mode: ", value);
 	    }
 
-	    if (this->settings.render.mode == DESKTOP_BACKGROUND) {
+	    if (!lastScreen.empty ()
+		&& (this->settings.render.mode == DESKTOP_BACKGROUND
+		    || this->settings.render.mode == GNOME_SHELL)) {
 		this->settings.general.screenScalings[lastScreen] = mode;
 		// also update span group if targeting one
 		if (lastScreen.rfind ("span:", 0) == 0 && !this->settings.general.spanGroups.empty ()) {
@@ -442,7 +470,8 @@ void ApplicationContext::loadSettingsFromArgv () {
     backgroundGroup.add_argument ("--clamp")
 	.help (
 	    "Clamp mode to use when rendering the background, this applies to the previous --window, --screen-root, "
-	    "or --screen-span output, or the default background if no other background is specified"
+	    "--gnome-shell-screen, or --screen-span output, or the default background if no other background is "
+	    "specified"
 	)
 	.choices ("clamp", "border", "repeat")
 	.action ([this, &lastScreen] (const std::string& value) -> void {
@@ -458,7 +487,9 @@ void ApplicationContext::loadSettingsFromArgv () {
 		sLog.exception ("Invalid clamp mode: ", value);
 	    }
 
-	    if (this->settings.render.mode == DESKTOP_BACKGROUND) {
+	    if (!lastScreen.empty ()
+		&& (this->settings.render.mode == DESKTOP_BACKGROUND
+		    || this->settings.render.mode == GNOME_SHELL)) {
 		this->settings.general.screenClamps[lastScreen] = flags;
 		// also update span group if targeting one
 		if (lastScreen.rfind ("span:", 0) == 0 && !this->settings.general.spanGroups.empty ()) {

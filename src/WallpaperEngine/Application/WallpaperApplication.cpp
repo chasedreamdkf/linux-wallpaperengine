@@ -180,6 +180,18 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
 }
 
 void WallpaperApplication::loadBackgrounds () {
+    // --gnome-shell-screen gives every monitor its own background, keyed by monitor index
+    if (this->m_context.settings.render.mode == ApplicationContext::GNOME_SHELL
+	&& !this->m_context.settings.general.screenBackgrounds.empty ()) {
+	for (const auto& [screen, path] : this->m_context.settings.general.screenBackgrounds) {
+	    this->m_backgrounds[screen] = this->loadBackground (
+		path.empty () ? this->m_context.settings.general.defaultBackground : path
+	    );
+	}
+
+	return;
+    }
+
     if (this->m_context.settings.render.mode == ApplicationContext::NORMAL_WINDOW
 	|| this->m_context.settings.render.mode == ApplicationContext::EXPLICIT_WINDOW
 	|| this->m_context.settings.render.mode == ApplicationContext::GNOME_SHELL) {

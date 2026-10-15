@@ -42,9 +42,14 @@ GnomeShellOutput::~GnomeShellOutput () {
 	this->m_frameBuffer = nullptr;
     }
 
+    // m_viewports holds non-owning aliases of the viewports owned here
     this->m_viewports.clear ();
-    delete this->m_viewport;
-    this->m_viewport = nullptr;
+
+    for (const auto* screen : this->m_screens) {
+	delete screen;
+    }
+
+    this->m_screens.clear ();
 }
 
 void GnomeShellOutput::reset () { this->m_ipc.requestMonitors (); }
@@ -134,14 +139,27 @@ void GnomeShellOutput::applyMonitors (const std::vector<MonitorInfo>& monitors, 
 	    "GNOME Shell desktop bounding box is ", width, "x", height, " at (", minX, ",", minY, ") across ",
 	    monitors.size (), " monitor(s)"
 	);
+
+	for (const auto& monitor : monitors) {
+	    sLog.out (
+		"  monitor ", monitor.name, " -> ", monitor.x, "x", monitor.y, ":", monitor.width, "x",
+		monitor.height
+	    );
+	}
+
 	this->rebuildFrameBuffer ();
     }
 }
 
 void GnomeShellOutput::rebuildFrameBuffer () {
+    // Output::m_viewports only aliases the viewports, which are owned by m_screens
     this->m_viewports.clear ();
-    delete this->m_viewport;
-    this->m_viewport = nullptr;
+
+    for (const auto* screen : this->m_screens) {
+	delete screen;
+    }
+
+    this->m_screens.clear ();
 
     if (this->m_frameBuffer != nullptr) {
 	this->m_ipc.unregisterFrameBuffer ();
@@ -161,10 +179,39 @@ void GnomeShellOutput::rebuildFrameBuffer () {
 	sLog.error ("The GNOME Shell bridge extension rejected the frame buffer registration");
     }
 
-    auto* viewport = new GLFWOutputViewport { { 0, 0, this->m_fullWidth, this->m_fullHeight }, "default" };
-    viewport->globalPosition = this->m_boundsPosition;
-    viewport->logicalSize = { this->m_fullWidth, this->m_fullHeight };
+    // --gnome-shell-screen gives every monitor its own wallpaper, so each monitor gets
+    // its own viewport named after the index the extension reported. Without it a single
+    // viewport spanning the whole bounding box is used instead.
+    const bool perMonitor = !this->m_context.settings.general.screenBackgrounds.empty ();
 
-    this->m_viewport = viewport;
-    this->m_viewports["default"] = viewport;
+    if (!perMonitor) {
+	auto* viewport = new GLFWOutputViewport { { 0, 0, this->m_fullWidth, this->m_fullHeight }, "default" };
+	viewport->globalPosition = this->m_boundsPosition;
+	viewport->logicalSize = { this->m_fullWidth, this->m_fullHeight };
+
+	this->m_screens.push_back (viewport);
+	this->m_viewports["default"] = viewport;
+    } else {
+	for (const auto& monitor : this->m_monitors) {
+	    // coordinates are relative to the bounding box because that is what the frame holds
+	    auto* viewport = new GLFWOutputViewport {
+		{ monitor.x - this->m_boundsPosition.x, monitor.y - this->m_boundsPosition.y, monitor.width,
+		  monitor.height },
+		monitor.name
+	    };
+	    viewport->globalPosition = { monitor.x, monitor.y };
+	    viewport->logicalSize = { monitor.width, monitor.height };
+
+	    this->m_screens.push_back (viewport);
+	    this->m_viewports[monitor.name] = viewport;
+	}
+
+	for (const auto& requested : this->m_context.settings.general.screenBackgrounds) {
+	    if (this->m_viewports.find (requested.first) == this->m_viewports.end ()) {
+		sLog.error (
+		    "--gnome-shell-screen ", requested.first, " does not match any monitor the extension reported"
+		);
+	    }
+	}
+    }
 }

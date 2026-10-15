@@ -43,6 +43,21 @@ You can also run the engine manually:
     linux-wallpaperengine --gnome-shell /path/to/wallpaper
 
 
+Per-monitor wallpapers
+----------------------
+By default one wallpaper is rendered over the whole desktop bounding box. To give
+every monitor its own wallpaper, repeat --gnome-shell-screen with the monitor
+index (the engine logs them, 0-based) followed by --bg, and optionally
+--scaling/--clamp:
+
+    linux-wallpaperengine \
+        --gnome-shell-screen 0 --bg 123456 --scaling fill \
+        --gnome-shell-screen 1 --bg 789012 --scaling fill
+
+Monitors have no connector name in GNOME Shell's JS API, so screens are picked by
+index. A wallpaper is only rendered for monitors the extension reports.
+
+
 Uninstalling
 ------------
     ./packaging/gnome-shell/uninstall.sh

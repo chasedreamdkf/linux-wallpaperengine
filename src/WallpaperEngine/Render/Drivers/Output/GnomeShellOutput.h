@@ -16,7 +16,9 @@ namespace WallpaperEngine::Render::Drivers::Output {
  *
  * It never talks to a window system directly: the whole-desktop bounding box the
  * extension reported is rendered into a shared memory segment that the GJS
- * extension maps and paints into Mutter's background group.
+ * extension maps and paints into Mutter's background group. Each monitor gets
+ * its own viewport (named after the monitor index) so that --gnome-shell-screen
+ * can give every monitor a different wallpaper.
  */
 class GnomeShellOutput final : public Output {
 public:
@@ -37,7 +39,7 @@ private:
     void waitForMonitors (uint32_t timeoutMs);
     /** Stores the monitor layout and (re)builds the bounding box + frame buffer when it changed */
     void applyMonitors (const std::vector<GnomeShell::MonitorInfo>& monitors, const std::string& primary);
-    /** (Re)allocates the shared memory and registers it with the extension */
+    /** (Re)allocates the shared memory, registers it with the extension and rebuilds the viewports */
     void rebuildFrameBuffer ();
 
     GnomeShell::GnomeShellIpc& m_ipc;
@@ -45,7 +47,8 @@ private:
     std::vector<GnomeShell::MonitorInfo> m_monitors = {};
     std::string m_primary;
     glm::ivec2 m_boundsPosition = { 0, 0 };
-    OutputViewport* m_viewport = nullptr;
+    /** Owned viewports, one per monitor; Output::m_viewports holds non-owning aliases of them */
+    std::vector<OutputViewport*> m_screens = {};
     mutable bool m_writeInProgress = false;
 };
 } // namespace WallpaperEngine::Render::Drivers::Output
