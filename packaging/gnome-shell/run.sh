@@ -9,6 +9,13 @@
 #   ./run.sh 2976403740                     one wallpaper across the whole desktop
 #   ./run.sh 0=2976403740 1=3023217614      one wallpaper per monitor
 #
+# Set LWE_FRAME_SCALE (0.1 - 1.0) to render the frames at a fraction of the
+# desktop resolution. GNOME Shell then has far less data to copy and upload
+# every frame, which keeps the desktop responsive at the price of a softer
+# image:
+#
+#   LWE_FRAME_SCALE=0.75 ./run.sh 2976403740
+#
 # For the per-monitor form <index> is the 0-based monitor index the extension
 # reports; the engine logs them on startup:
 #
@@ -86,6 +93,12 @@ else
 
         ENGINE_ARGS+=(--gnome-shell-screen "${index}" --bg "${background}" --scaling fill)
     done
+fi
+
+# optional: render the frames at a fraction of the desktop resolution to lower the
+# per-frame copy/upload cost inside GNOME Shell (at the price of a softer image)
+if [[ -n "${LWE_FRAME_SCALE:-}" ]]; then
+    ENGINE_ARGS+=(--frame-scale "${LWE_FRAME_SCALE}")
 fi
 
 # --- install or refresh the extension -----------------------------------------

@@ -69,7 +69,11 @@ export class WallpaperState {
 
         this._image.set_preferred_width(width);
         this._image.set_preferred_height(height);
-        this._actor.set_size(width, height);
+        // The frames may be rendered at a lower resolution than the desktop (--frame-scale),
+        // so the actor keeps the desktop size and lets the content be upscaled.
+        this._actor.set_size(
+            this._bounds.width > 0 ? this._bounds.width : width,
+            this._bounds.height > 0 ? this._bounds.height : height);
         this._syncSessionMode();
 
         return true;

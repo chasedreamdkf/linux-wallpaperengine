@@ -347,6 +347,28 @@ void ApplicationContext::loadSettingsFromArgv () {
 	    this->settings.general.screenClamps[lastScreen] = this->settings.render.window.clamp;
 	})
 	.append ();
+    backgroundGroup.add_argument ("--frame-scale")
+	.help (
+	    "GNOME Shell backend only: render and publish the offscreen frames at this fraction (0.1 - 1.0) of the "
+	    "desktop resolution. The extension upscales them, which greatly reduces the per-frame copy and texture "
+	    "upload cost at the price of a softer image. Defaults to 1.0."
+	)
+	.action ([this] (const std::string& value) -> void {
+	    float scale = 0.0f;
+
+	    try {
+		scale = std::stof (value);
+	    } catch (const std::exception&) {
+		sLog.exception ("--frame-scale requires a number between 0.1 and 1.0: ", value);
+	    }
+
+	    if (scale < 0.1f || scale > 1.0f) {
+		sLog.exception ("--frame-scale must be between 0.1 and 1.0: ", value);
+	    }
+
+	    this->settings.render.frameScale = scale;
+	})
+	.append ();
     backgroundGroup.add_argument ("--screen-span")
 	.help ("Comma-separated list of screens to span a single wallpaper across")
 	.action ([this, &lastScreen] (const std::string& value) -> void {

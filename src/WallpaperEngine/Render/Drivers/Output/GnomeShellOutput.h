@@ -47,6 +47,10 @@ private:
     std::vector<GnomeShell::MonitorInfo> m_monitors = {};
     std::string m_primary;
     glm::ivec2 m_boundsPosition = { 0, 0 };
+    /** Size of the desktop bounding box in desktop (unscaled) pixels */
+    glm::ivec2 m_boundsSize = { 0, 0 };
+    /** Fraction of the desktop resolution the offscreen frames are rendered at */
+    float m_frameScale = 1.0f;
     /** Owned viewports, one per monitor; Output::m_viewports holds non-owning aliases of them */
     std::vector<OutputViewport*> m_screens = {};
     mutable bool m_writeInProgress = false;

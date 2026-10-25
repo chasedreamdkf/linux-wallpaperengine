@@ -3,8 +3,10 @@
 #include "GLFWOutputViewport.h"
 #include "WallpaperEngine/Logging/Log.h"
 
+#include <algorithm>
 #include <chrono>
 #include <climits>
+#include <cmath>
 #include <thread>
 
 using namespace WallpaperEngine::Render::Drivers::Output;
@@ -16,7 +18,7 @@ constexpr uint32_t MONITOR_WAIT_MS = 5000;
 } // namespace
 
 GnomeShellOutput::GnomeShellOutput (ApplicationContext& context, VideoDriver& driver, GnomeShellIpc& ipc) :
-    Output (context, driver), m_ipc (ipc) {
+    Output (context, driver), m_ipc (ipc), m_frameScale (context.settings.render.frameScale) {
     this->m_ipc.onMonitorsChanged
 	= [this] (const std::vector<MonitorInfo>& monitors, const std::string& primary) -> void {
 	      this->applyMonitors (monitors, primary);
@@ -128,16 +130,22 @@ void GnomeShellOutput::applyMonitors (const std::vector<MonitorInfo>& monitors, 
     this->m_monitors = monitors;
     this->m_primary = primary;
     this->m_boundsPosition = { minX, minY };
+    this->m_boundsSize = { width, height };
 
-    const bool sizeChanged = this->m_fullWidth != width || this->m_fullHeight != height;
+    // --frame-scale renders the frames smaller than the desktop and lets the extension
+    // upscale them, which shrinks the per-frame readback, copy and texture upload
+    const auto frameWidth = std::max (1, static_cast<int> (std::lround (width * this->m_frameScale)));
+    const auto frameHeight = std::max (1, static_cast<int> (std::lround (height * this->m_frameScale)));
 
-    this->m_fullWidth = width;
-    this->m_fullHeight = height;
+    const bool sizeChanged = this->m_fullWidth != frameWidth || this->m_fullHeight != frameHeight;
+
+    this->m_fullWidth = frameWidth;
+    this->m_fullHeight = frameHeight;
 
     if (sizeChanged || this->m_frameBuffer == nullptr) {
 	sLog.out (
 	    "GNOME Shell desktop bounding box is ", width, "x", height, " at (", minX, ",", minY, ") across ",
-	    monitors.size (), " monitor(s)"
+	    monitors.size (), " monitor(s), rendering frames at ", frameWidth, "x", frameHeight
 	);
 
 	for (const auto& monitor : monitors) {
@@ -187,18 +195,24 @@ void GnomeShellOutput::rebuildFrameBuffer () {
     if (!perMonitor) {
 	auto* viewport = new GLFWOutputViewport { { 0, 0, this->m_fullWidth, this->m_fullHeight }, "default" };
 	viewport->globalPosition = this->m_boundsPosition;
-	viewport->logicalSize = { this->m_fullWidth, this->m_fullHeight };
+	viewport->logicalSize = this->m_boundsSize;
 
 	this->m_screens.push_back (viewport);
 	this->m_viewports["default"] = viewport;
     } else {
 	for (const auto& monitor : this->m_monitors) {
-	    // coordinates are relative to the bounding box because that is what the frame holds
-	    auto* viewport = new GLFWOutputViewport {
-		{ monitor.x - this->m_boundsPosition.x, monitor.y - this->m_boundsPosition.y, monitor.width,
-		  monitor.height },
-		monitor.name
+	    // coordinates are relative to the bounding box because that is what the frame holds,
+	    // and they are scaled just like the frame itself so the monitors still tile it exactly
+	    const auto scale = [this] (int value) -> int {
+		return static_cast<int> (std::lround (value * this->m_frameScale));
 	    };
+
+	    const int left = scale (monitor.x - this->m_boundsPosition.x);
+	    const int top = scale (monitor.y - this->m_boundsPosition.y);
+	    const int right = scale (monitor.x - this->m_boundsPosition.x + monitor.width);
+	    const int bottom = scale (monitor.y - this->m_boundsPosition.y + monitor.height);
+
+	    auto* viewport = new GLFWOutputViewport { { left, top, right - left, bottom - top }, monitor.name };
 	    viewport->globalPosition = { monitor.x, monitor.y };
 	    viewport->logicalSize = { monitor.width, monitor.height };
 

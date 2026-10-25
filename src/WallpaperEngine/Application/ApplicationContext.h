@@ -118,6 +118,11 @@ public:
 	    WINDOW_MODE mode;
 	    /** Maximum FPS */
 	    int maximumFPS;
+	    /**
+	     * GNOME Shell backend only: fraction of the desktop resolution used for the offscreen
+	     * frames. The extension upscales them, trading sharpness for a much cheaper readback.
+	     */
+	    float frameScale;
 	    /** Indicates if pausing should happen when something goes fullscreen */
 	    bool pauseOnFullscreen;
 	    /**
@@ -205,6 +210,7 @@ public:
         .render = {
             .mode = NORMAL_WINDOW,
             .maximumFPS = 30,
+            .frameScale = 1.0f,
             .pauseOnFullscreen = true,
             .pauseOnFullscreenOnlyWhenActive = false,
             .fullscreenPauseIgnoreAppIds = {},

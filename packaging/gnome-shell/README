@@ -71,6 +71,22 @@ Monitors have no connector name in GNOME Shell's JS API, so screens are picked b
 index. A wallpaper is only rendered for monitors the extension reports.
 
 
+Performance
+-----------
+Every frame is copied through shared memory and uploaded as a texture inside
+GNOME Shell, so the compositor has to move width * height * 4 bytes per frame.
+On a 3840x1285 span at 30 FPS that is almost 1.2 GB/s, which can make the whole
+desktop stutter even though the engine itself renders on the discrete GPU.
+
+--frame-scale (or LWE_FRAME_SCALE through run.sh) renders and publishes the
+frames at a fraction of the desktop resolution; the extension upscales them:
+
+    LWE_FRAME_SCALE=0.75 ./run.sh 2976403740
+
+Measured on a 3840x1285 span: GNOME Shell CPU goes from ~43% (on top of its idle
+load) at 1.0 to ~29% at 0.75 and ~12% at 0.5. The image gets softer accordingly.
+
+
 Running manually
 ----------------
 Bypassing systemd entirely (handy while debugging):
@@ -88,9 +104,10 @@ How it works
 1. The engine creates an EGL surfaceless OpenGL context (falling back to a
    hidden GLFW window when EGL is unavailable) and renders the whole desktop
    bounding box into its own framebuffer.
-2. Each frame is read back with glReadPixels into a double-buffered shared
-   memory segment protected by a seqlock, exposed as
-   /dev/shm/lwe-gnome-<pid>-<n>.
+2. Each frame is read back asynchronously through a double-buffered PBO into a
+   double-buffered shared memory segment protected by a seqlock, exposed as
+   /dev/shm/lwe-gnome-<pid>-<n>. This costs one frame of latency but keeps the
+   GPU from stalling on the readback.
 3. A lightweight FrameReady D-Bus signal wakes the extension, which reads the
    stable buffer and pushes it into an St.ImageContent on an actor inside the
    background group.

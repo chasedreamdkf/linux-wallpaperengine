@@ -10,6 +10,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <chrono>
+#include <cstddef>
 #include <glm/vec2.hpp>
 
 namespace WallpaperEngine::Render::Drivers {
@@ -50,6 +51,10 @@ private:
     void setupGlfwContext ();
     /** (Re)creates the offscreen framebuffer matching the desktop bounding box */
     void recreateFramebuffer ();
+    /** (Re)creates the pixel buffer objects used for the asynchronous readback */
+    void recreatePixelBuffers (int width, int height);
+    /** Releases the pixel buffer objects */
+    void destroyPixelBuffers ();
 
     ApplicationContext& m_context;
     GnomeShell::GnomeShellIpc m_ipc;
@@ -68,5 +73,13 @@ private:
     GLuint m_framebuffer = 0;
     GLuint m_framebufferTexture = 0;
     glm::ivec2 m_framebufferSize = { 0, 0 };
+
+    // Double buffered pixel buffer objects. One frame is copied into the PBO while
+    // the previous one is mapped out of the other one, which keeps the GPU from
+    // stalling on the readback. This costs one frame of latency.
+    GLuint m_pixelBuffers[2] = { 0, 0 };
+    std::size_t m_pixelBufferSize = 0;
+    int m_pixelBufferIndex = 0;
+    bool m_pixelBufferPending = false;
 };
 } // namespace WallpaperEngine::Render::Drivers

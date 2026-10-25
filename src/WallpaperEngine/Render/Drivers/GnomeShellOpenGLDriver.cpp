@@ -6,6 +6,7 @@
 
 #include <EGL/eglext.h>
 
+#include <cstring>
 #include <unistd.h>
 
 using namespace WallpaperEngine::Render::Drivers;
@@ -50,6 +51,8 @@ GnomeShellOpenGLDriver::GnomeShellOpenGLDriver (ApplicationContext& context, Wal
 GnomeShellOpenGLDriver::~GnomeShellOpenGLDriver () {
     delete this->m_output;
     this->m_output = nullptr;
+
+    this->destroyPixelBuffers ();
 
     if (this->m_framebuffer != 0) {
 	glDeleteFramebuffers (1, &this->m_framebuffer);
@@ -130,20 +133,47 @@ void GnomeShellOpenGLDriver::dispatchEventQueue () {
 	this->getApp ().update (viewport);
     }
 
-    // read the whole frame back into the shared memory so the extension can pick it up
+    // Start the asynchronous readback of this frame. Reading into a pixel buffer
+    // object returns immediately, so the GPU does not have to finish the frame
+    // before the next one can be submitted.
     if (this->m_output->haveImageBuffer ()) {
-	void* buffer = this->m_output->getImageBuffer ();
+	const int width = this->m_output->getFullWidth ();
+	const int height = this->m_output->getFullHeight ();
 
-	if (buffer != nullptr) {
-	    glReadPixels (
-		0, 0, this->m_output->getFullWidth (), this->m_output->getFullHeight (), GL_RGBA, GL_UNSIGNED_BYTE,
-		buffer
-	    );
+	if (this->m_pixelBuffers[0] != 0) {
+	    glBindBuffer (GL_PIXEL_PACK_BUFFER, this->m_pixelBuffers[this->m_pixelBufferIndex]);
+	    glReadPixels (0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	    glBindBuffer (GL_PIXEL_PACK_BUFFER, 0);
 
-	    if (const GLenum error = glGetError (); error != GL_NO_ERROR) {
-		sLog.exception ("OpenGL error when reading the GNOME Shell frame ", error);
-	    }
+	    this->m_pixelBufferIndex ^= 1;
 	}
+
+	// Hand the previous frame to the extension. By now its readback has almost
+	// always completed, so mapping it does not block.
+	if (this->m_pixelBufferPending) {
+	    glBindBuffer (GL_PIXEL_PACK_BUFFER, this->m_pixelBuffers[this->m_pixelBufferIndex]);
+
+	    const void* pixels
+		= glMapBufferRange (GL_PIXEL_PACK_BUFFER, 0, this->m_pixelBufferSize, GL_MAP_READ_BIT);
+
+	    if (pixels != nullptr) {
+		void* buffer = this->m_output->getImageBuffer ();
+
+		if (buffer != nullptr) {
+		    std::memcpy (buffer, pixels, this->m_pixelBufferSize);
+		}
+
+		glUnmapBuffer (GL_PIXEL_PACK_BUFFER);
+
+		if (buffer != nullptr) {
+		    this->m_output->updateRender ();
+		}
+	    }
+
+	    glBindBuffer (GL_PIXEL_PACK_BUFFER, 0);
+	}
+
+	this->m_pixelBufferPending = this->m_pixelBuffers[0] != 0;
     }
 
     this->m_output->updateRender ();
@@ -167,11 +197,13 @@ void* GnomeShellOpenGLDriver::getProcAddress (const char* name) const {
 
 void GnomeShellOpenGLDriver::setupContext () {
     if (this->setupEglContext ()) {
+	sLog.out ("GNOME Shell OpenGL renderer: ", glGetString (GL_RENDERER));
 	return;
     }
 
     sLog.out ("EGL surfaceless context unavailable, falling back to a hidden GLFW window");
     this->setupGlfwContext ();
+    sLog.out ("GNOME Shell OpenGL renderer: ", glGetString (GL_RENDERER));
 }
 
 bool GnomeShellOpenGLDriver::setupEglContext () {
@@ -320,11 +352,45 @@ void GnomeShellOpenGLDriver::recreateFramebuffer () {
     glBindFramebuffer (GL_FRAMEBUFFER, 0);
 
     this->m_framebufferSize = { width, height };
+    this->recreatePixelBuffers (width, height);
 
     // route the wallpapers' final composite into this framebuffer
     this->getApp ().setDestinationFramebuffer (this->m_framebuffer);
 
     sLog.out ("GNOME Shell offscreen framebuffer is ", width, "x", height);
+}
+
+void GnomeShellOpenGLDriver::recreatePixelBuffers (int width, int height) {
+    const auto size = static_cast<std::size_t> (width) * static_cast<std::size_t> (height) * 4;
+
+    if (this->m_pixelBuffers[0] != 0 && size == this->m_pixelBufferSize) {
+	return;
+    }
+
+    this->destroyPixelBuffers ();
+
+    glGenBuffers (2, this->m_pixelBuffers);
+
+    for (const GLuint pixelBuffer : this->m_pixelBuffers) {
+	glBindBuffer (GL_PIXEL_PACK_BUFFER, pixelBuffer);
+	glBufferData (GL_PIXEL_PACK_BUFFER, size, nullptr, GL_STREAM_READ);
+    }
+
+    glBindBuffer (GL_PIXEL_PACK_BUFFER, 0);
+
+    this->m_pixelBufferSize = size;
+}
+
+void GnomeShellOpenGLDriver::destroyPixelBuffers () {
+    if (this->m_pixelBuffers[0] != 0) {
+	glDeleteBuffers (2, this->m_pixelBuffers);
+	this->m_pixelBuffers[0] = 0;
+	this->m_pixelBuffers[1] = 0;
+    }
+
+    this->m_pixelBufferSize = 0;
+    this->m_pixelBufferIndex = 0;
+    this->m_pixelBufferPending = false;
 }
 
 __attribute__ ((constructor)) void registerGnomeShellOpenGLDriver () {
